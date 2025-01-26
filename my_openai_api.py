@@ -7,7 +7,7 @@ from threading import Thread
 import torch
 from flask import Flask, current_app, request, Blueprint, stream_with_context
 from flask_cors import CORS
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from modelscope import AutoModelForCausalLM, AutoTokenizer
 from transformers.generation.utils import GenerationConfig
 from transformers.generation.streamers import TextIteratorStreamer
 from marshmallow import validate
@@ -26,7 +26,7 @@ class Transformers():
         self.tokenizer = tokenizer
         self.model = model
         if chat is None:
-            self.chat = model.chat
+            self.chat = model.generate        
 
 
 tfs = Transformers()
@@ -45,7 +45,7 @@ def sse(line, field="data"):
 
 def empty_cache():
     if torch.backends.mps.is_available():
-        torch.mps.empty_cache()
+        torch.cuda.empty_cache()
 
 
 def create_app():
@@ -82,11 +82,10 @@ def create_app():
     Swagger(app, template=template)
 
     # Init transformers
-    model_name = "./Baichuan2-13B-Chat-4bits"
-    tokenizer = AutoTokenizer.from_pretrained(
-            model_name, use_fast=False, trust_remote_code=True)
+    model_name = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(
-            model_name, device_map="auto", trust_remote_code=True)
+            model_name, device_map="cpu", trust_remote_code=True, low_cpu_mem_usage=True)
     model.generation_config = GenerationConfig.from_pretrained(model_name)
 
     tfs.init_app(app, tokenizer, model)
@@ -318,6 +317,8 @@ def create_chat_completion():
             mimetype="text/event-stream"
         )
     else:
+        print(type(tfs.tokenizer))
+        print(type(create_chat_completion["messages"]))
         response = tfs.chat(tfs.tokenizer, create_chat_completion["messages"])
 
         message = ChatMessageSchema().dump(
@@ -468,4 +469,4 @@ if __name__ == '__main__':
     except Exception:
         pass
 
-    app.run(debug=False, host="0.0.0.0", port=5000)
+    app.run(debug=False, host="0.0.0.0", port=5001)
